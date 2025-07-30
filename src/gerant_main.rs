@@ -1,4 +1,4 @@
-use std::{error::Error, thread, time::Duration};
+use std::{thread, time::Duration};
 
 use crate::{functions::Functions, gerant::Gerant};
 
@@ -14,7 +14,7 @@ pub mod functions;
 pub mod spec_buffer;
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
+async fn main() {
  
     let mut gerant = Gerant::new();
     gerant.demarer().await;
@@ -22,6 +22,5 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let functions: Functions = Functions::read_functions_1553();
     gerant.send_message1553(&functions.call_function("1"));
 
-    thread::sleep(Duration::from_millis(100000));
-    Ok(())
+    thread::sleep(Duration::from_millis(10000));
 }
