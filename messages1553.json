@@ -1,0 +1,22 @@
+{
+    "functions" : [
+        {
+            "command_word": 1,
+            "addr": "127.0.0.1",
+            "sub_addr": "1",
+            "size" : 3,
+            "data_words" : [
+                8000, 5000, 1234
+            ]
+        },
+        {
+            "command_word": 2,
+            "addr": "127.0.0.1",
+            "sub_addr": "1",
+            "size" : 3,
+            "data_words" : [
+                1234, 5678, 9101
+            ]
+        }
+    ]
+}
