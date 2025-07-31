@@ -42,7 +42,7 @@ impl Client {
     }
 
     pub fn get_liste_messages_1553(self) -> Vec<CoupleMessage> {
-        return Arc::new(Mutex::new(self.list_message_to_send)).lock().unwrap().to_vec();
+        return self.list_message_to_send;
     }
 
     pub async fn handle_receiving_message(self, socket : ReadHalf<TcpStream>) {
@@ -57,7 +57,7 @@ impl Client {
                         self.list_message_receive.try_lock().unwrap().push(msg);
                     }
                 },
-                Err(_) => panic!("No can be read")
+                Err(_) => panic!("No data can be read")
             };
         }
     }
@@ -90,6 +90,7 @@ impl Client {
 pub async fn await_connect(address : &str, port : u16) -> TcpStream {
     loop {
         if let Ok(socket) = TcpStream::connect(format!("{}:{}", address, port)).await {
+            println!("Connected to the server");
             let _ = socket.set_nodelay(true);
             let _ = socket.set_ttl(100);
             return socket;
