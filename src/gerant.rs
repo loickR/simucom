@@ -17,7 +17,7 @@ impl Gerant {
     }
 
     pub async fn demarer(&mut self) {
-        self.bus_com.start().await;
+        let _ = self.bus_com.start().await;
     }
 
     pub fn arreter(self) {
