@@ -25,14 +25,12 @@ impl Gerant {
     }
 
     pub fn send_message1553(mut self, message: &Message1553) {
-        let read_adresse = message.clone().get_adresse_1553();
-        self.bus_com.send_message(message, read_adresse, 1553);
+        self.bus_com.send_message(message);
     }
 
     pub fn send_messages(mut self, messages: Vec<Message1553>) {
         for (_, message) in messages.iter().enumerate() {
-            let read_adresse = message.clone().get_adresse_1553();
-            self.bus_com.send_message(message, read_adresse, 1553);
+            self.bus_com.send_message(message);
             thread::sleep(Duration::from_millis(100));
         }
     }

@@ -26,9 +26,10 @@ impl Functions {
         panic!("Unable to find a valid command")
     }
 
-    pub fn read_functions_1553() -> Functions {
-        let data = fs::read_to_string(&"messages1553.json").expect("Unable to read file");
-        let functions_list: Functions = serde_json::from_str(&data).unwrap();
-        return functions_list;
-    }
+}
+
+pub fn read_functions_1553() -> Functions {
+    let data = fs::read_to_string(&"messages1553.json").expect("Unable to read file");
+    let functions_list: Functions = serde_json::from_str(&data).unwrap();
+    return functions_list;
 }

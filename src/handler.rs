@@ -2,7 +2,7 @@ use std::{io::{Read, Write}, net::TcpStream};
 
 use bytebuffer::ByteBuffer;
 
-use crate::{command::Command, message1553::Message1553};
+use crate::{message1553::Message1553};
 
 pub trait Observer1553 {
     fn notify_message(&mut self, msg: Message1553);
@@ -24,30 +24,7 @@ impl NetHandler {
     pub fn handle(&mut self, res : TcpStream) {
         self.list_stream.push(res);
     }
-
-    pub fn send_message<M : Command>(&self, message: &M) {
-        for (_, m) in message.destination().iter().enumerate() {
-            let addr = m.address();
-            let port = m.port();
-            println!("Trying send message to {addr}:{port}");
-            for (_, cl) in self.list_stream.iter().enumerate() {
-                let mut clone_cl = cl;
-                let sock = clone_cl.local_addr().unwrap();
-                let p = sock.port();
-                let ip = sock.ip();
-                println!("clone_check_addr = {ip}:{p}");
-                match ip.to_string().as_str() == addr.as_str() {
-                    true =>  {
-                        println!("Sending message ...");
-                        let _ = clone_cl.write(message.do_encode().as_bytes());
-                        println!("Message sent ...");
-                    },
-                    _ => println!("Unable to find matching address")
-                }
-            }
-        }
-    }
-
+    
     pub fn send_bytes_message(&self, message: &[u8], adresse: &str) {
         self.send_message_from_bytes(message, adresse, 1553);
     }

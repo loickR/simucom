@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::spec_buffer::SpecBuffer;
 
+pub const MIN_SIZE_MESSAGE1553: u16 = 12;
 
 // Structure pour représenter un message 1553
 #[derive(Serialize, Deserialize, Clone, Default, Debug)]
@@ -88,11 +89,4 @@ impl Message1553 {
         println!("message read = {:?}", msg_decoded);
         return msg_decoded;
     }
-}
-
-#[derive(Default, Debug, Clone)]
-pub struct CoupleMessage {
-    pub(crate) msg : Message1553,
-    pub(crate) _address : String,
-    pub(crate) _port : u32
 }
