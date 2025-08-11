@@ -1,6 +1,6 @@
-use std::{error::Error, sync::{Arc, Mutex}, thread, time::Duration};
+use std::{error::Error, sync::{Arc, Mutex}};
 
-use tokio::net::TcpStream;
+use tokio::{io, net::TcpStream};
 
 use crate::message1553::{self, Message1553};
 
@@ -25,13 +25,13 @@ impl Node {
             sender:  Sender::new(arc_mutex.clone())
         };
         
-        let clone_node = node.clone();
+        let result = Ok(node.clone());
 
-        node.reader.handle_reading();
+        node.reader.handle_reading().await?;
 
-        node.sender.handle_writing();
+        node.sender.handle_writing().await?;
 
-        Ok(clone_node)
+        result
     }
  
     pub fn send_message(&mut self, message : &Message1553) {
@@ -63,23 +63,25 @@ impl Sender {
         }
     }
 
-    pub fn handle_writing(self) {
-        tokio::spawn(async move {
-            loop {
-                for msg in self.list_message_to_send.lock().unwrap().clone() {
-                    match self.socket.lock().unwrap().try_write(&msg.do_encode()) {
-                        Ok(_) => println!("Message {:?} sent", msg),
-                        Err(e) => println!("Unable to send message : {e}")
+    pub async fn handle_writing(self) -> Result<(), Box<dyn Error>> {
+        loop {
+            self.socket.lock().unwrap().writable().await?;
+            for msg in self.list_message_to_send.lock().unwrap().clone() {
+                match self.socket.lock().unwrap().try_write(&msg.do_encode()) {
+                    Ok(_) => println!("Message {:?} sent", msg),
+                    Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+                        continue;
+                    }
+                    Err(e) => {
+                        return Err(e.into());
                     }
                 }
-
-                if !self.list_message_to_send.clone().lock().unwrap().is_empty() {
-                    self.list_message_to_send.lock().unwrap().clear();
-                }
-
-                thread::sleep(Duration::from_millis(100));
             }
-        });
+
+            if !self.list_message_to_send.clone().lock().unwrap().is_empty() {
+                self.list_message_to_send.lock().unwrap().clear();
+            }
+        }
     }
 
     pub fn send_message(&mut self, message : &Message1553) {
@@ -103,22 +105,24 @@ impl Reader {
         }
     }
 
-    pub fn handle_reading(self) {
-        tokio::spawn(async move {
-            loop {
-                let mut buf = Vec::new();
-                match self.socket.lock().unwrap().try_read(&mut buf) {
-                    Ok(size) => {
-                        if size as u16 >= message1553::MIN_SIZE_MESSAGE1553 {
-                            self.list_message_to_receive.lock().unwrap().push(Message1553::do_decode(&buf));
-                        }
-                    },
-                    Err(e) => {
-                        panic!("An error has occured : {e}")
+    pub async fn handle_reading(self) -> Result<(), Box<dyn Error>> {
+        loop {
+            let mut buf = Vec::new();
+            self.socket.lock().unwrap().readable().await?;
+            match self.socket.lock().unwrap().try_read(&mut buf) {
+                Ok(size) => {
+                    if size as u16 >= message1553::MIN_SIZE_MESSAGE1553 {
+                        self.list_message_to_receive.lock().unwrap().push(Message1553::do_decode(&buf));
                     }
                 }
+                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+                    continue;
+                }
+                Err(e) => {
+                    return Err(e.into());
+                }
             }
-        });
+        }
     }
 
     pub fn read_messages(self) -> Arc<Mutex<Vec<Message1553>>> {
