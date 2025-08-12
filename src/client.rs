@@ -1,4 +1,4 @@
-use std::error::Error;
+use std::{error::Error, sync::{Arc, Mutex}};
 
 use crate::{message1553::Message1553, node::Node};
 
@@ -8,6 +8,7 @@ use crate::{message1553::Message1553, node::Node};
 pub struct Client {
     address: String,
     port: u16,
+    node: Vec<Arc<Mutex<Node>>>
 }
 
 impl Client {
@@ -15,7 +16,8 @@ impl Client {
     pub fn new(addr: &str, p : u16) -> Self {
         Self {
             address: addr.to_string(),
-            port: p
+            port: p,
+            node: Vec::new()
         }
     }
 
@@ -26,21 +28,23 @@ impl Client {
         Ok(())
     }
 
-    pub async fn await_connect(self, address : &str, port : u16) -> Result<(), Box<dyn Error>> {
+    pub async fn await_connect(&mut self, address : &str, port : u16) -> Result<(), Box<dyn Error>> {
         let _client = Node::handle_stream(address, port).await?;
         println!("Connected to the server");
         
+        self.node.push(Arc::new(Mutex::new(_client)));
+
         Ok(())
     }
 
     pub fn send_message(&mut self, message : &Message1553) {
         println!("Adding message {:?} to the queue", message);
+        self.node.clone().get(0).unwrap().lock().unwrap().send_message(message);
        // self.list_message_to_send.lock().unwrap().push(message.clone());
     }
 
     pub fn get_liste_messages_1553(self) -> Vec<Message1553> {
-        // return self.list_message_to_send.lock().unwrap().to_vec();
-        Vec::new()
+        return self.node.get(0).unwrap().lock().unwrap().clone().get_liste_messages_1553()
     }
 
     pub fn stop(self) {
