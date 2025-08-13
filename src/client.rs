@@ -29,13 +29,26 @@ impl Client {
     }
 
     pub async fn await_connect(&mut self, address : &str, port : u16) -> Result<(), Box<dyn Error>> {
-        let client = Node::handle_stream(address, port).await?;
+        let client = match Node::handle_stream(address, port).await {
+            Ok(socket) => {
+                println!("Connected to the server");
+                socket
+            },
+            Err(e) => panic!("Unable to connect to the server : {e}")
+        };
     
+        // Encore des clones ... 
+        let client_read = client.clone();
+        let client_write = client.clone();
+
+        let _ = Node::handle_stream_read(client_read);
+
+        // ça ne marchera pas ...
+        let _ = Node::handle_stream_write(client_write);
+        
+        // Overkill ...
         self.node.push(Arc::new(Mutex::new(client)));
 
-        let _ = Node::handle_stream_read(self.node.get(0).unwrap().lock().unwrap().to_owned());
-        let _ = Node::handle_stream_write(self.node.get(0).unwrap().lock().unwrap().to_owned());
-        
         Ok(())
     }
 
