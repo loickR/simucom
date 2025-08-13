@@ -22,8 +22,8 @@ impl Client {
     }
 
     pub async fn start(&mut self) -> Result<(), Box<dyn Error>> {
-        let mut_self = self;
-        mut_self.clone().await_connect(&mut_self.address, mut_self.clone().port.clone()).await?;
+        let address = self.address.to_string();
+        self.await_connect(&address, self.port).await?;
 
         Ok(())
     }
@@ -39,7 +39,7 @@ impl Client {
 
     pub fn send_message(&mut self, message : &Message1553) {
         println!("Adding message {:?} to the queue", message);
-        self.node.clone().get(0).unwrap().lock().unwrap().send_message(message);
+        self.node.get(0).unwrap().lock().unwrap().send_message(message);
        // self.list_message_to_send.lock().unwrap().push(message.clone());
     }
 
