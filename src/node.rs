@@ -25,13 +25,19 @@ impl Node {
             sender:  Sender::new(arc_mutex.clone())
         };
         
-        let result = Ok(node.clone());
+        Ok(node)
+    }
 
-        node.reader.handle_reading().await?;
+    pub async fn handle_stream_read(node: Node) {
+        tokio::spawn(async move {
+            let _ = node.reader.handle_reading();
+        });
+    }
 
-        node.sender.handle_writing().await?;
-
-        result
+    pub async fn handle_stream_write(node: Node) {
+        tokio::spawn(async move {
+           let _ = node.sender.handle_writing();
+        });
     }
  
     pub fn send_message(&mut self, message : &Message1553) {
@@ -40,7 +46,7 @@ impl Node {
     }
 
     pub fn get_liste_messages_1553(self) -> Vec<Message1553> {
-        return self.reader.read_messages().lock().unwrap().to_vec();
+        return self.reader.clone().read_messages().lock().unwrap().to_vec();
     }
 
     pub fn stream(self) -> Arc<Mutex<TcpStream>> {
@@ -66,6 +72,7 @@ impl Sender {
     pub async fn handle_writing(self) -> Result<(), Box<dyn Error>> {
         loop {
             self.socket.lock().unwrap().writable().await?;
+            println!("list of messages to send : {:?}", self.list_message_to_send.lock().unwrap());
             for msg in self.list_message_to_send.lock().unwrap().clone() {
                 match self.socket.lock().unwrap().try_write(&msg.do_encode()) {
                     Ok(_) => println!("Message {:?} sent", msg),

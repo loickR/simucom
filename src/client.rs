@@ -29,18 +29,19 @@ impl Client {
     }
 
     pub async fn await_connect(&mut self, address : &str, port : u16) -> Result<(), Box<dyn Error>> {
-        let _client = Node::handle_stream(address, port).await?;
-        println!("Connected to the server");
-        
-        self.node.push(Arc::new(Mutex::new(_client)));
+        let client = Node::handle_stream(address, port).await?;
+    
+        self.node.push(Arc::new(Mutex::new(client)));
 
+        let _ = Node::handle_stream_read(self.node.get(0).unwrap().lock().unwrap().to_owned());
+        let _ = Node::handle_stream_write(self.node.get(0).unwrap().lock().unwrap().to_owned());
+        
         Ok(())
     }
 
     pub fn send_message(&mut self, message : &Message1553) {
         println!("Adding message {:?} to the queue", message);
         self.node.get(0).unwrap().lock().unwrap().send_message(message);
-       // self.list_message_to_send.lock().unwrap().push(message.clone());
     }
 
     pub fn get_liste_messages_1553(self) -> Vec<Message1553> {
