@@ -1,14 +1,16 @@
-use std::{error::Error, sync::{Arc, Mutex}};
+use std::{error::Error};
+
+use tokio::sync::mpsc::{self, Receiver, Sender};
 
 use crate::{message1553::Message1553, node::Node};
 
 
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Client {
     address: String,
     port: u16,
-    node: Vec<Arc<Mutex<Node>>>
+    channel_sender: (Sender<Message1553>, Receiver<Message1553>)
 }
 
 impl Client {
@@ -17,19 +19,18 @@ impl Client {
         Self {
             address: addr.to_string(),
             port: p,
-            node: Vec::new()
+            channel_sender: mpsc::channel(32)
         }
     }
 
     pub async fn start(&mut self) -> Result<(), Box<dyn Error>> {
         let address = self.address.to_string();
         self.await_connect(&address, self.port).await?;
-
         Ok(())
     }
 
     pub async fn await_connect(&mut self, address : &str, port : u16) -> Result<(), Box<dyn Error>> {
-        let client = match Node::handle_stream(address, port).await {
+        let (sender, reader) = match Node::handle_stream(address, port).await {
             Ok(socket) => {
                 println!("Connected to the server");
                 socket
@@ -37,28 +38,23 @@ impl Client {
             Err(e) => panic!("Unable to connect to the server : {e}")
         };
     
-        // Encore des clones ... 
-        let client_read = client.clone();
-        let client_write = client.clone();
+        Node::handle_stream_write(sender.lock().as_deref_mut().unwrap()).await?;
 
-        let _ = Node::handle_stream_read(client_read);
+        Node::handle_stream_read(reader.lock().as_deref().unwrap().clone()).await;
 
-        // ça ne marchera pas ...
-        let _ = Node::handle_stream_write(client_write);
-        
-        // Overkill ...
-        self.node.push(Arc::new(Mutex::new(client)));
+        sender.lock().unwrap().send_message(&self.channel_sender.1.blocking_recv().unwrap()).await?;
 
         Ok(())
     }
 
-    pub fn send_message(&mut self, message : &Message1553) {
+    pub async fn send_message(&mut self, message : &Message1553) -> Result<(), Box<dyn Error>> {
         println!("Adding message {:?} to the queue", message);
-        self.node.get(0).unwrap().lock().unwrap().send_message(message);
+        self.channel_sender.0.send(message.clone()).await?;
+        Ok(())
     }
 
     pub fn get_liste_messages_1553(self) -> Vec<Message1553> {
-        return self.node.get(0).unwrap().lock().unwrap().clone().get_liste_messages_1553()
+        return Vec::new()
     }
 
     pub fn stop(self) {

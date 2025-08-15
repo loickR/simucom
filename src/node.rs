@@ -1,52 +1,57 @@
 use std::{error::Error, sync::{Arc, Mutex}};
 
-use tokio::{io, net::TcpStream};
+use tokio::{io, net::TcpStream, sync::mpsc::{self, Receiver, Sender}};
 
 use crate::message1553::{self, Message1553};
 
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Node {
     pub(crate) stream : Arc<Mutex<TcpStream>>,
-    pub(crate) reader: Reader,
-    pub(crate) sender: Sender
+    pub(crate) reader: Arc<Mutex<ReaderMessage1553>>,
+    pub(crate) sender: Arc<Mutex<SenderMessage1553>>
 }
 
 impl Node {
     
-    pub async fn handle_stream(address : &str, port : u16) -> Result<Node, Box<dyn Error>> {
-        let socket = TcpStream::connect(format!("{}:{}", address, port)).await?;
-
+    pub async fn handle_stream(address : &str, port : u16) -> Result<(Arc<Mutex<SenderMessage1553>>, Arc<Mutex<ReaderMessage1553>>), Box<dyn Error>> {
+        let socket = match TcpStream::connect(format!("{}:{}", address, port)).await {
+            Ok(co_socket) => co_socket,
+            Err(_) => panic!("Unable to connect to the distant server")
+        };
+        
         let arc_mutex = Arc::new(Mutex::new(socket));
+
+        let (tx , rx) = mpsc::channel::<Message1553>(32);
 
         let node = Node {
             stream: arc_mutex.clone(),
-            reader:  Reader::new(arc_mutex.clone()),
-            sender:  Sender::new(arc_mutex.clone())
+            reader: Arc::new(Mutex::new(ReaderMessage1553::new(arc_mutex.clone()))),
+            sender: Arc::new(Mutex::new(SenderMessage1553::new(arc_mutex.clone(), tx, rx)))
         };
-        
-        Ok(node)
+
+        Ok((node.sender, node.reader))
     }
 
-    pub async fn handle_stream_read(node: Node) {
+    pub async fn handle_stream_read(reader1553 : ReaderMessage1553) {
         tokio::spawn(async move {
-            let _ = node.reader.handle_reading();
+            let _ = reader1553.handle_reading();
         });
     }
 
-    pub async fn handle_stream_write(node: Node) {
-        tokio::spawn(async move {
-           let _ = node.sender.handle_writing();
-        });
+    pub async fn handle_stream_write(sender1553 : &mut SenderMessage1553) -> Result<(), Box<dyn Error>> {
+        let _ = sender1553.handle_writing().await?;
+        Ok(())
     }
  
-    pub fn send_message(&mut self, message : &Message1553) {
+    pub async fn send_message(&mut self, message : &Message1553) -> Result<(), Box<dyn Error>> {
         println!("Adding message {:?} to the queue", message);
-        self.sender.send_message(message);
+        self.sender.lock().unwrap().send_message(message).await?;
+        Ok(())
     }
 
     pub fn get_liste_messages_1553(self) -> Vec<Message1553> {
-        return self.reader.clone().read_messages().lock().unwrap().to_vec();
+        return self.reader.lock().unwrap().clone().read_messages().lock().unwrap().to_vec();
     }
 
     pub fn stream(self) -> Arc<Mutex<TcpStream>> {
@@ -54,59 +59,61 @@ impl Node {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct Sender {
+#[derive(Debug)]
+pub struct SenderMessage1553 {
     socket : Arc<Mutex<TcpStream>>,
-    list_message_to_send: Arc<Mutex<Vec<Message1553>>>
+    tx: Sender<Message1553>,
+    rx: Receiver<Message1553>
 }
 
-impl Sender {
+impl SenderMessage1553 {
 
-    pub fn new(sock : Arc<Mutex<TcpStream>>) -> Sender {
-        Sender { 
-            socket: sock.clone(),
-            list_message_to_send: Arc::new(Mutex::new(Vec::new()))
+    pub fn new(sock : Arc<Mutex<TcpStream>>, tx : Sender<Message1553>, rx : Receiver<Message1553>) -> SenderMessage1553 {
+        SenderMessage1553 { 
+            socket: sock,
+            tx: tx,
+            rx: rx
         }
     }
 
-    pub async fn handle_writing(self) -> Result<(), Box<dyn Error>> {
+    pub async fn handle_writing(&mut self) -> Result<(), Box<dyn Error>> {
         loop {
-            self.socket.lock().unwrap().writable().await?;
-            println!("list of messages to send : {:?}", self.list_message_to_send.lock().unwrap());
-            for msg in self.list_message_to_send.lock().unwrap().clone() {
-                match self.socket.lock().unwrap().try_write(&msg.do_encode()) {
-                    Ok(_) => println!("Message {:?} sent", msg),
+            let msg = self.rx.recv().await;
+            println!("Message to send : {:?}", msg);
+
+            if !msg.is_none() {
+                self.socket.lock().unwrap().writable().await?;
+                let message_to_send = msg.unwrap();
+                match self.socket.lock().unwrap().try_write(&message_to_send.do_encode()) {
+                    Ok(_) => println!("Message {:?} sent", message_to_send),
                     Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
                         continue;
                     }
                     Err(e) => {
-                        return Err(e.into());
+                        panic!("{:?}", e);
                     }
                 }
-            }
-
-            if !self.list_message_to_send.clone().lock().unwrap().is_empty() {
-                self.list_message_to_send.lock().unwrap().clear();
             }
         }
     }
 
-    pub fn send_message(&mut self, message : &Message1553) {
+    pub async fn send_message(&mut self, message : &Message1553) -> Result<(), Box<dyn Error>> {
         println!("Adding message {:?} to the queue", message);
-        self.list_message_to_send.lock().unwrap().push(message.clone());
+        self.tx.send(message.clone()).await.unwrap();
+        Ok(())
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct Reader {
+pub struct ReaderMessage1553 {
     socket : Arc<Mutex<TcpStream>>,
     list_message_to_receive: Arc<Mutex<Vec<Message1553>>>
 }
 
-impl Reader {
+impl ReaderMessage1553 {
 
-    pub fn new(sock : Arc<Mutex<TcpStream>>) -> Reader {
-        Reader { 
+    pub fn new(sock : Arc<Mutex<TcpStream>>) -> ReaderMessage1553 {
+        ReaderMessage1553 { 
             socket: sock.clone(),
             list_message_to_receive: Arc::new(Mutex::new(Vec::new()))
         }
@@ -126,7 +133,7 @@ impl Reader {
                     continue;
                 }
                 Err(e) => {
-                    return Err(e.into());
+                    panic!("{:?}", e);
                 }
             }
         }

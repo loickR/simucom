@@ -24,13 +24,13 @@ impl Gerant {
         self.bus_com.stop();
     }
 
-    pub fn send_message1553(mut self, message: &Message1553) {
-        self.bus_com.send_message(message);
+    pub async fn send_message1553(mut self, message: &Message1553) {
+        self.bus_com.send_message(message).await.unwrap();
     }
 
-    pub fn send_messages(mut self, messages: Vec<Message1553>) {
+    pub async fn send_messages(mut self, messages: Vec<Message1553>) {
         for (_, message) in messages.iter().enumerate() {
-            self.bus_com.send_message(message);
+            self.bus_com.send_message(message).await.unwrap();
             thread::sleep(Duration::from_millis(100));
         }
     }

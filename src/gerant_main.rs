@@ -22,7 +22,7 @@ async fn main() {
 
     let functions: Functions = read_functions_1553();
 
-    gerant.send_message1553(&functions.call_function("1"));
+    gerant.send_message1553(&functions.call_function("1")).await;
 
     thread::sleep(Duration::from_millis(10000));
 }
