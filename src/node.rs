@@ -33,10 +33,11 @@ impl Node {
         Ok((node.sender, node.reader))
     }
 
-    pub async fn handle_stream_read(reader1553 : ReaderMessage1553) {
+    pub async fn handle_stream_read(reader1553 : ReaderMessage1553) -> Result<(), Box<dyn Error>> {
         tokio::spawn(async move {
             let _ = reader1553.handle_reading();
         });
+        Ok(())
     }
 
     pub async fn handle_stream_write(sender1553 : &mut SenderMessage1553) -> Result<(), Box<dyn Error>> {
@@ -78,12 +79,10 @@ impl SenderMessage1553 {
 
     pub async fn handle_writing(&mut self) -> Result<(), Box<dyn Error>> {
         loop {
-            let msg = self.rx.recv().await;
-            println!("Message to send : {:?}", msg);
-
-            if !msg.is_none() {
+            if let Some(msg) = self.rx.recv().await {
+                println!("Message to send : {:?}", msg);
                 self.socket.lock().unwrap().writable().await?;
-                let message_to_send = msg.unwrap();
+                let message_to_send = msg;
                 match self.socket.lock().unwrap().try_write(&message_to_send.do_encode()) {
                     Ok(_) => println!("Message {:?} sent", message_to_send),
                     Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {

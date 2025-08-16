@@ -40,9 +40,13 @@ impl Client {
     
         Node::handle_stream_write(sender.lock().as_deref_mut().unwrap()).await?;
 
-        Node::handle_stream_read(reader.lock().as_deref().unwrap().clone()).await;
+        Node::handle_stream_read(reader.lock().as_deref().unwrap().clone()).await?;
 
-        sender.lock().unwrap().send_message(&self.channel_sender.1.blocking_recv().unwrap()).await?;
+        let mut data : Vec<u16> = Vec::new();
+        data.push(100);
+        data.push(200);
+        data.push(300);
+        sender.lock().unwrap().send_message(&Message1553::new(1, "127.0.0.1".to_string(), "5".to_string(), data)).await?;
 
         Ok(())
     }
