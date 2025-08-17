@@ -34,6 +34,7 @@ impl Node {
     }
 
     pub async fn handle_stream_read(reader1553 : ReaderMessage1553) -> Result<(), Box<dyn Error>> {
+        println!("Initialisation du thread d'écoute des messages entrants ...");
         tokio::spawn(async move {
             let _ = reader1553.handle_reading();
         });
@@ -41,6 +42,7 @@ impl Node {
     }
 
     pub async fn handle_stream_write(sender1553 : &mut SenderMessage1553) -> Result<(), Box<dyn Error>> {
+        println!("Initialisation du thread d'envoi des messages ...");
         let _ = sender1553.handle_writing().await?;
         Ok(())
     }
@@ -78,22 +80,27 @@ impl SenderMessage1553 {
     }
 
     pub async fn handle_writing(&mut self) -> Result<(), Box<dyn Error>> {
-        loop {
-            if let Some(msg) = self.rx.recv().await {
-                println!("Message to send : {:?}", msg);
-                self.socket.lock().unwrap().writable().await?;
-                let message_to_send = msg;
-                match self.socket.lock().unwrap().try_write(&message_to_send.do_encode()) {
-                    Ok(_) => println!("Message {:?} sent", message_to_send),
-                    Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-                        continue;
-                    }
-                    Err(e) => {
-                        panic!("{:?}", e);
-                    }
-                }
+        println!("Attente de message");
+        self.handle_writing_aux().await?;
+        Ok(())
+    }
+
+    async fn handle_writing_aux(&mut self) -> Result<(), Box<dyn Error>> {
+        let msg = self.rx.recv().await;
+        println!("Message to send : {:?}", msg);
+        self.socket.lock().unwrap().writable().await?;
+        let message_to_send = msg.unwrap();
+        match self.socket.lock().unwrap().try_write(&message_to_send.do_encode()) {
+            Ok(_) => println!("Message {:?} sent", message_to_send),
+            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+                println!("Error occured when posting message : {:?}", e);
+            }
+            Err(e) => {
+                panic!("{:?}", e);
             }
         }
+
+        Ok(())
     }
 
     pub async fn send_message(&mut self, message : &Message1553) -> Result<(), Box<dyn Error>> {
