@@ -42,18 +42,18 @@ impl Client {
 
         Node::handle_stream_read(&mut reader).await?;
 
-        let mut data : Vec<u16> = Vec::new();
-        data.push(100);
-        data.push(200);
-        data.push(300);
-        sender.send_message(&Message1553::new(1, "127.0.0.1".to_string(), "5".to_string(), data)).await?;
+        tokio::spawn(async move {
+            loop {
+                sender.send_message(&self.channel_sender.1.recv().await.unwrap()).await;
+            }
+        });
 
         Ok(())
     }
 
     pub async fn send_message(&mut self, message : &Message1553) -> Result<(), Box<dyn Error>> {
         println!("Adding message {:?} to the queue", message);
-        self.channel_sender.0.send(message.clone()).await?;
+        self.channel_sender.0.clone().send(message.clone()).await?;
         Ok(())
     }
 
