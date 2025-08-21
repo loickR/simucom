@@ -2,7 +2,7 @@ use std::{error::Error};
 
 use tokio::sync::mpsc::{self, Receiver, Sender};
 
-use crate::{message1553::Message1553, node::Node};
+use crate::{message1553::Message1553, node::{Node, SenderMessage1553}};
 
 
 
@@ -30,7 +30,7 @@ impl Client {
     }
 
     pub async fn await_connect(&mut self, address : &str, port : u16) -> Result<(), Box<dyn Error>> {
-        let (sender, reader) = match Node::handle_stream(address, port).await {
+        let (reader, sender) = match Node::handle_stream(address, port).await {
             Ok(socket) => {
                 println!("Connected to the server");
                 socket
@@ -38,15 +38,15 @@ impl Client {
             Err(e) => panic!("Unable to connect to the server : {e}")
         };
     
-        Node::handle_stream_write(sender.lock().as_deref_mut().unwrap()).await?;
+        Node::handle_stream_write(&mut sender).await?;
 
-        Node::handle_stream_read(reader.lock().as_deref().unwrap().clone()).await?;
+        Node::handle_stream_read(&mut reader).await?;
 
         let mut data : Vec<u16> = Vec::new();
         data.push(100);
         data.push(200);
         data.push(300);
-        sender.lock().unwrap().send_message(&Message1553::new(1, "127.0.0.1".to_string(), "5".to_string(), data)).await?;
+        sender.send_message(&Message1553::new(1, "127.0.0.1".to_string(), "5".to_string(), data)).await?;
 
         Ok(())
     }
