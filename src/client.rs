@@ -2,7 +2,7 @@ use std::{error::Error};
 
 use tokio::sync::mpsc::{self, Receiver, Sender};
 
-use crate::{message1553::Message1553, node::{Node, SenderMessage1553}};
+use crate::{message1553::Message1553, node::Node};
 
 
 
@@ -30,7 +30,7 @@ impl Client {
     }
 
     pub async fn await_connect(&mut self, address : &str, port : u16) -> Result<(), Box<dyn Error>> {
-        let (reader, sender) = match Node::handle_stream(address, port).await {
+        let (mut reader, mut sender) = match Node::handle_stream(address, port).await {
             Ok(socket) => {
                 println!("Connected to the server");
                 socket

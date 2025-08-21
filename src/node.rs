@@ -21,12 +21,7 @@ impl Node {
         
         let (half_reader , half_writer) = tokio::io::split(socket);
 
-        let node = Node {
-            reader: ReaderMessage1553::new(half_reader),
-            sender: SenderMessage1553::new(half_writer)
-        };
-
-        Ok((node.reader, node.sender))
+        Ok((ReaderMessage1553::new(half_reader), SenderMessage1553::new(half_writer)))
     }
 
     pub async fn handle_stream_read(reader1553 : &mut ReaderMessage1553) -> Result<(), Box<dyn Error>> {
@@ -47,7 +42,7 @@ impl Node {
  
     pub async fn send_message(&mut self, message : &Message1553) -> Result<(), Box<dyn Error>> {
         println!("Adding message {:?} to the queue", message);
-        self.sender.lock().unwrap().send_message(message).await?;
+        self.sender.send_message(message).await?;
         Ok(())
     }
 
