@@ -46,9 +46,9 @@ impl Node {
         Ok(())
     }
 
-    pub async fn get_liste_messages_1553(self) -> Vec<Message1553> {
+    pub async fn get_liste_messages_1553(&mut self) -> Vec<Message1553> {
         let mut data: Vec<Message1553> = Vec::new();
-        data.push(self.reader.lock().unwrap().read_message().await);
+        data.push(self.reader.read_message().await);
         return data;
     }
 }
