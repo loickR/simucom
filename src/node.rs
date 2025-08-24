@@ -1,69 +1,46 @@
-use std::{error::Error, sync::{Arc, Mutex}, time::Duration};
+use std::{error::Error, time::Duration};
 
-use tokio::{io::{AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf}, net::TcpStream, sync::mpsc::{self, Receiver, Sender}};
+use tokio::{io::{AsyncReadExt, AsyncWriteExt}, net::tcp::{OwnedReadHalf, OwnedWriteHalf}, sync::mpsc::{Receiver, Sender}};
 
 use crate::message1553::Message1553;
 
 
 #[derive(Debug)]
 pub struct Node {
-    pub(crate) reader: ReaderMessage1553,
-    pub(crate) sender: SenderMessage1553
+
 }
 
 impl Node {
-    
-    pub async fn handle_stream(address : &str, port : u16) -> Result<(ReaderMessage1553, SenderMessage1553), Box<dyn Error>> {
-        let socket = match TcpStream::connect(format!("{}:{}", address, port)).await {
-            Ok(co_socket) => co_socket,
-            Err(_) => panic!("Unable to connect to the distant server")
-        };
-        
-        let (half_reader , half_writer) = tokio::io::split(socket);
 
-        Ok((ReaderMessage1553::new(half_reader), SenderMessage1553::new(half_writer)))
-    }
-
-    pub async fn handle_stream_read(reader1553 : &mut ReaderMessage1553) -> Result<(), Box<dyn Error>> {
+    pub async fn handle_stream_read(read_half: OwnedReadHalf, tx : Sender<Message1553>, rx : Receiver<Message1553>) -> Result<(), Box<dyn Error>> {
         println!("Initialisation du thread d'écoute des messages entrants ...");
+        let mut reader1553 = ReaderMessage1553::new(read_half, tx, rx);
         tokio::spawn(async move {
-            let _ = reader1553.handle_reading();
+            let _ = reader1553.handle_reading().await;
         });
         Ok(())
     }
 
-    pub async fn handle_stream_write(sender1553 : &mut SenderMessage1553) -> Result<(), Box<dyn Error>> {
+    pub async fn handle_stream_write(write_half : OwnedWriteHalf, tx : Sender<Message1553>, rx : Receiver<Message1553>) -> Result<(), Box<dyn Error>> {
         println!("Initialisation du thread d'envoi des messages ...");
+        let mut sender1553 = SenderMessage1553::new(write_half, tx, rx);
         tokio::spawn(async move {
-            let _ = sender1553.handle_writing();
+            let _ = sender1553.handle_writing().await;
         });
         Ok(())
-    }
- 
-    pub async fn send_message(&mut self, message : &Message1553) -> Result<(), Box<dyn Error>> {
-        println!("Adding message {:?} to the queue", message);
-        self.sender.send_message(message).await?;
-        Ok(())
-    }
-
-    pub async fn get_liste_messages_1553(&mut self) -> Vec<Message1553> {
-        let mut data: Vec<Message1553> = Vec::new();
-        data.push(self.reader.read_message().await);
-        return data;
     }
 }
 
 #[derive(Debug)]
 pub struct SenderMessage1553 {
-    socket : WriteHalf<TcpStream>,
+    socket : OwnedWriteHalf,
     tx: Sender<Message1553>,
     rx: Receiver<Message1553>
 }
 
 impl SenderMessage1553 {
 
-    pub fn new(sock : WriteHalf<TcpStream>) -> SenderMessage1553 {
-        let (tx, rx) = mpsc::channel(32);
+    pub fn new(sock : OwnedWriteHalf, tx : Sender<Message1553>, rx : Receiver<Message1553>) -> SenderMessage1553 {
         SenderMessage1553 { 
             socket: sock,
             tx: tx,
@@ -73,43 +50,41 @@ impl SenderMessage1553 {
 
     pub async fn handle_writing(&mut self) -> Result<(), Box<dyn Error>> {
         println!("Attente de message");
-        SenderMessage1553::handle_writing_aux(&mut self.socket, &mut self.rx).await;
-        Ok(())
-    }
+        loop {
+            self.rx.try_recv().iter().clone().for_each(|msg| {
+                println!("Message to send : {:?}", msg);
+                let message_to_send = msg;
+                let _ = self.socket.write(&message_to_send.do_encode());
+                std::thread::sleep(Duration::from_millis(100));
+            });
 
-    async fn handle_writing_aux(socket : &mut WriteHalf<TcpStream>, rx: &mut Receiver<Message1553>) -> Result<(), Box<dyn Error>> {
-        rx.try_recv().iter().clone().for_each(|msg| {
-            println!("Message to send : {:?}", msg);
-            let message_to_send = msg;
-            socket.write(&message_to_send.do_encode());
             std::thread::sleep(Duration::from_millis(100));
-        });
-        
-        Ok(())
+        }
     }
 
     pub async fn send_message(&mut self, message : &Message1553) -> Result<(), Box<dyn Error>> {
         println!("Adding message {:?} to the queue", message);
-        self.socket.write(&message.do_encode());
+        let _ = self.tx.send(message.clone());
         Ok(())
+    }
+
+    pub fn get_tx(self) -> Sender<Message1553> {
+        self.tx.clone()
     }
 }
 
 #[derive(Debug)]
 pub struct ReaderMessage1553 {
-    socket : ReadHalf<TcpStream>,
-    list_message_to_receive: Arc<Mutex<Vec<Message1553>>>,
+    socket : OwnedReadHalf,
     rx : Receiver<Message1553>,
     tx : Sender<Message1553>
 }
 
 impl ReaderMessage1553 {
 
-    pub fn new(sock : ReadHalf<TcpStream>) -> ReaderMessage1553 {
-        let (tx, rx) = mpsc::channel(32);
+    pub fn new(sock : OwnedReadHalf, tx: Sender<Message1553>, rx: Receiver<Message1553>) -> ReaderMessage1553 {
         ReaderMessage1553 { 
             socket: sock,
-            list_message_to_receive: Arc::new(Mutex::new(Vec::new())),
             rx: rx,
             tx: tx
         }
@@ -118,7 +93,7 @@ impl ReaderMessage1553 {
     pub async fn handle_reading(&mut self) -> Result<(), Box<dyn Error>> {
         loop {
             let mut buf = Vec::new();
-            self.socket.read(&mut buf);
+            let _ = self.socket.read(&mut buf);
             let message = Message1553::do_decode(&buf);
             self.tx.send(message);
         }

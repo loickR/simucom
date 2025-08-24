@@ -1,8 +1,8 @@
-use std::{error::Error};
+use std::{error::Error, ops::Deref};
 
-use tokio::sync::mpsc::{self, Receiver, Sender};
+use tokio::{net::TcpStream, sync::mpsc::{self, Receiver, Sender}};
 
-use crate::{message1553::Message1553, node::Node};
+use crate::{message1553::Message1553, node::{Node, ReaderMessage1553, SenderMessage1553}};
 
 
 
@@ -10,7 +10,8 @@ use crate::{message1553::Message1553, node::Node};
 pub struct Client {
     address: String,
     port: u16,
-    channel_sender: (Sender<Message1553>, Receiver<Message1553>)
+    channel_sender: (Sender<Message1553>, Receiver<Message1553>),
+    channel_reader: (Sender<Message1553>, Receiver<Message1553>)
 }
 
 impl Client {
@@ -19,7 +20,8 @@ impl Client {
         Self {
             address: addr.to_string(),
             port: p,
-            channel_sender: mpsc::channel(32)
+            channel_sender: mpsc::channel(32),
+            channel_reader: mpsc::channel(32)
         }
     }
 
@@ -30,30 +32,26 @@ impl Client {
     }
 
     pub async fn await_connect(&mut self, address : &str, port : u16) -> Result<(), Box<dyn Error>> {
-        let (mut reader, mut sender) = match Node::handle_stream(address, port).await {
+        let (read_half, write_half) = match TcpStream::connect(format!("{}:{}", address, port)).await {
             Ok(socket) => {
-                println!("Connected to the server");
-                socket
+                println!("Connected to the server : {:?}", socket);
+                socket.into_split()
             },
-            Err(e) => panic!("Unable to connect to the server : {e}")
-        };
-    
-        Node::handle_stream_write(&mut sender).await?;
+            Err(_) => panic!("Unable to connect to the distant server")
+        }; 
 
-        Node::handle_stream_read(&mut reader).await?;
+        let (tx_receive, rx_receive) = &self.channel_reader;
+        Node::handle_stream_read(read_half, tx_receive, rx_receive);
 
-        tokio::spawn(async move {
-            loop {
-                sender.send_message(&self.channel_sender.1.recv().await.unwrap()).await;
-            }
-        });
+        let (tx_send, rx_send) = &self.channel_sender;
+        Node::handle_stream_write(write_half, tx_send, rx_send);
 
         Ok(())
     }
 
     pub async fn send_message(&mut self, message : &Message1553) -> Result<(), Box<dyn Error>> {
         println!("Adding message {:?} to the queue", message);
-        self.channel_sender.0.clone().send(message.clone()).await?;
+        self.channel_sender.0.send(message.clone()).await?;
         Ok(())
     }
 
