@@ -1,6 +1,6 @@
-use std::{error::Error, time::Duration};
+use std::{error::Error, sync::{Arc, Mutex}, time::Duration};
 
-use tokio::{io::{AsyncReadExt, AsyncWriteExt}, net::tcp::{OwnedReadHalf, OwnedWriteHalf}, sync::mpsc::{Receiver, Sender}};
+use tokio::{io::{AsyncReadExt, AsyncWriteExt}, net::tcp::{OwnedReadHalf, OwnedWriteHalf}, sync::broadcast::{self, Receiver, Sender}};
 
 use crate::message1553::Message1553;
 
@@ -12,22 +12,26 @@ pub struct Node {
 
 impl Node {
 
-    pub async fn handle_stream_read(read_half: OwnedReadHalf, tx : Sender<Message1553>, rx : Receiver<Message1553>) -> Result<(), Box<dyn Error>> {
+    /*
+    pub async fn handle_stream_read(read_half: OwnedReadHalf) -> Result<Arc<Mutex<Receiver<Message1553>>>, Box<dyn Error>> {
         println!("Initialisation du thread d'écoute des messages entrants ...");
-        let mut reader1553 = ReaderMessage1553::new(read_half, tx, rx);
+        let (tx_copy_read, rx_copy_read): (Sender<Message1553>, Receiver<Message1553>) = broadcast::channel(32);
+        let mut reader1553 = ReaderMessage1553::new(read_half, tx_copy_read, rx_copy_read);
+        let mutex = Arc::new(Mutex::new(rx_copy_read));
         tokio::spawn(async move {
             let _ = reader1553.handle_reading().await;
         });
-        Ok(())
-    }
+        Ok(mutex.clone())
+    } */
 
-    pub async fn handle_stream_write(write_half : OwnedWriteHalf, tx : Sender<Message1553>, rx : Receiver<Message1553>) -> Result<(), Box<dyn Error>> {
+    pub async fn handle_stream_write(write_half : OwnedWriteHalf) -> Result<Sender<Message1553>, Box<dyn Error>> {
         println!("Initialisation du thread d'envoi des messages ...");
-        let mut sender1553 = SenderMessage1553::new(write_half, tx, rx);
+        let (tx_copy_send, rx_copy_send): (Sender<Message1553>, Receiver<Message1553>) = broadcast::channel(32);
+        let mut sender1553 = SenderMessage1553::new(write_half, tx_copy_send.clone(), rx_copy_send);
         tokio::spawn(async move {
             let _ = sender1553.handle_writing().await;
         });
-        Ok(())
+        Ok(tx_copy_send.clone())
     }
 }
 
@@ -55,6 +59,7 @@ impl SenderMessage1553 {
                 println!("Message to send : {:?}", msg);
                 let message_to_send = msg;
                 let _ = self.socket.write(&message_to_send.do_encode());
+                println!("Message sent");
                 std::thread::sleep(Duration::from_millis(100));
             });
 

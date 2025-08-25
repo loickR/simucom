@@ -1,8 +1,8 @@
-use std::{error::Error, ops::Deref};
+use std::error::Error;
 
-use tokio::{net::TcpStream, sync::mpsc::{self, Receiver, Sender}};
+use tokio::{net::TcpStream, sync::broadcast::{self, Receiver, Sender}};
 
-use crate::{message1553::Message1553, node::{Node, ReaderMessage1553, SenderMessage1553}};
+use crate::{message1553::Message1553, node::Node};
 
 
 
@@ -20,8 +20,8 @@ impl Client {
         Self {
             address: addr.to_string(),
             port: p,
-            channel_sender: mpsc::channel(32),
-            channel_reader: mpsc::channel(32)
+            channel_sender: broadcast::channel(32),
+            channel_reader: broadcast::channel(32)
         }
     }
 
@@ -40,18 +40,15 @@ impl Client {
             Err(_) => panic!("Unable to connect to the distant server")
         }; 
 
-        let (tx_receive, rx_receive) = &self.channel_reader;
-        Node::handle_stream_read(read_half, tx_receive, rx_receive);
-
-        let (tx_send, rx_send) = &self.channel_sender;
-        Node::handle_stream_write(write_half, tx_send, rx_send);
+        //Node::handle_stream_read(read_half).await?;
+        self.channel_sender.0 = Node::handle_stream_write(write_half).await.unwrap();
 
         Ok(())
     }
 
     pub async fn send_message(&mut self, message : &Message1553) -> Result<(), Box<dyn Error>> {
         println!("Adding message {:?} to the queue", message);
-        self.channel_sender.0.send(message.clone()).await?;
+        let _ = self.channel_sender.0.send(message.clone());
         Ok(())
     }
 
