@@ -40,8 +40,15 @@ impl Client {
             Err(_) => panic!("Unable to connect to the distant server")
         }; 
 
-        //Node::handle_stream_read(read_half).await?;
-        self.channel_sender.0 = Node::handle_stream_write(write_half).await.unwrap();
+        let (tx_copy_send, rx_copy_send): (Sender<Message1553>, Receiver<Message1553>) = broadcast::channel(32);
+        let (tx_copy_read, rx_copy_read): (Sender<Message1553>, Receiver<Message1553>) = broadcast::channel(32);
+        
+
+        Node::handle_stream_read(read_half, tx_copy_read).await?;
+        Node::handle_stream_write(write_half, rx_copy_send).await.unwrap();
+
+        self.channel_sender.0 = tx_copy_send;
+        self.channel_reader.1 = rx_copy_read;
 
         Ok(())
     }
@@ -52,8 +59,8 @@ impl Client {
         Ok(())
     }
 
-    pub fn get_liste_messages_1553(self) -> Vec<Message1553> {
-        return Vec::new()
+    pub async fn get_liste_messages_1553(&mut self) -> Message1553 {
+        return self.channel_reader.1.recv().await.unwrap()
     }
 
     pub fn stop(self) {
