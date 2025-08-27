@@ -1,4 +1,4 @@
-use std::{thread, time::Duration};
+use std::{error::Error, thread, time::Duration};
 
 use crate::{client::Client, message1553::Message1553};
 
@@ -24,8 +24,9 @@ impl Gerant {
         self.bus_com.stop();
     }
 
-    pub async fn send_message1553(mut self, message: &Message1553) {
-        self.bus_com.send_message(message).await.unwrap();
+    pub async fn send_message1553(mut self, message: &Message1553) -> Result<(), Box<dyn Error>> {
+        self.bus_com.send_message(message).await?;
+        Ok(())
     }
 
     pub async fn send_messages(mut self, messages: Vec<Message1553>) {

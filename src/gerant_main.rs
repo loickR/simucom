@@ -1,4 +1,4 @@
-use std::{thread, time::Duration};
+use std::{error::Error, thread, time::Duration};
 
 use crate::{functions::{read_functions_1553, Functions}, gerant::Gerant};
 
@@ -15,14 +15,16 @@ pub mod node;
 
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), Box<dyn Error>> {
  
     let mut gerant = Gerant::new();
     gerant.demarer().await;
 
     let functions: Functions = read_functions_1553();
 
-    gerant.send_message1553(&functions.call_function("1")).await;
+    gerant.send_message1553(&functions.call_function("1")).await?;
 
     thread::sleep(Duration::from_millis(10000));
+
+    Ok(())
 }
