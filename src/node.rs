@@ -82,7 +82,10 @@ impl ReaderMessage1553 {
             let mut buf = Vec::new();
             let _ = self.socket.read(&mut buf).await;
             let message = Message1553::do_decode(&buf);
-            self.tx.send(message);
+            match self.tx.send(message) {
+                Ok(size) => println!("{:?} octets reçus", size),
+                Err(e) => println!("Erreur lors de la lecture des données : {:?}", e)
+            }
         }
     }
 }
